@@ -1,0 +1,5 @@
+{
+  "name": "AI Multi-Language Translator",
+  "description": "A powerful language translator that uses AI for both basic and advanced contextual translations. Users can input text directly or upload files. It supports multiple languages including English, Portuguese, French, Spanish, Italian, German, and Russian, and features a light/dark mode for user comfort.",
+  "requestFramePermissions": []
+}
