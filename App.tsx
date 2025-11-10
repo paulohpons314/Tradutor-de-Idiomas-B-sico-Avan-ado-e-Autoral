@@ -3,7 +3,8 @@ import Header from './components/Header';
 import TranslatorControls from './components/TranslatorControls';
 import TextInputArea from './components/TextInputArea';
 import TextOutputArea from './components/TextOutputArea';
-import { Language, Theme } from './types';
+import FileTranslationArea from './components/FileTranslationArea';
+import { Language, Theme, TranslationStyle } from './types';
 import { translateText, generateSpeech } from './services/geminiService';
 import { decode, decodeAudioData } from './utils/audio';
 
@@ -16,10 +17,15 @@ const App: React.FC = () => {
   const [isAdvanced, setIsAdvanced] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [translationStyle, setTranslationStyle] = useState<TranslationStyle>(TranslationStyle.Standard);
   
   const [isFetchingSource, setIsFetchingSource] = useState<boolean>(false);
   const [isFetchingTarget, setIsFetchingTarget] = useState<boolean>(false);
   const [nowPlaying, setNowPlaying] = useState<'source' | 'target' | null>(null);
+
+  const [mode, setMode] = useState<'text' | 'file'>('text');
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [translatedFileContent, setTranslatedFileContent] = useState<string>('');
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -39,26 +45,90 @@ const App: React.FC = () => {
     setTargetLang(sourceLang);
   };
   
-  const handleTranslate = useCallback(async () => {
-    if (!inputText.trim()) return;
-
-    setIsLoading(true);
-    setError(null);
-    setTranslatedText('');
-
-    try {
-      const result = await translateText(inputText, sourceLang, targetLang, isAdvanced);
-      setTranslatedText(result);
-    } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [inputText, sourceLang, targetLang, isAdvanced]);
-
-  const handleClearText = () => {
+  const handleModeChange = (newMode: 'text' | 'file') => {
+    if (mode === newMode) return;
+    setMode(newMode);
+    // Reset all translation-related states
     setInputText('');
     setTranslatedText('');
+    setUploadedFile(null);
+    setTranslatedFileContent('');
+    setError(null);
+    setIsLoading(false);
+    stopCurrentAudio();
+  };
+
+  const handleToggleAdvanced = (advanced: boolean) => {
+    setIsAdvanced(advanced);
+    if (!advanced) {
+      setTranslationStyle(TranslationStyle.Standard);
+    }
+  };
+
+  const handleTranslate = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    stopCurrentAudio();
+
+    const textToTranslate = mode === 'text' ? inputText : '';
+    let hasContent = mode === 'text' ? !!textToTranslate.trim() : !!uploadedFile;
+    
+    if (!hasContent) {
+        setIsLoading(false);
+        return;
+    }
+
+    if (mode === 'text') {
+        setTranslatedText('');
+        try {
+            const result = await translateText(inputText, sourceLang, targetLang, isAdvanced, translationStyle);
+            setTranslatedText(result);
+        } catch (err: any) {
+            setError(err.message || 'An unexpected error occurred.');
+        } finally {
+            setIsLoading(false);
+        }
+    } else if (mode === 'file' && uploadedFile) {
+        setTranslatedFileContent('');
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const fileContent = e.target?.result as string;
+            if (fileContent) {
+                try {
+                    const result = await translateText(fileContent, sourceLang, targetLang, isAdvanced, translationStyle);
+                    setTranslatedFileContent(result);
+                } catch (err: any) {
+                    setError(err.message || 'An unexpected error occurred.');
+                } finally {
+                    setIsLoading(false);
+                }
+            } else {
+                setError("Could not read the file content.");
+                setIsLoading(false);
+            }
+        };
+        reader.onerror = () => {
+            setError("Failed to read the file.");
+            setIsLoading(false);
+        };
+        reader.readAsText(uploadedFile);
+    } else {
+        setIsLoading(false);
+    }
+}, [mode, inputText, uploadedFile, sourceLang, targetLang, isAdvanced, translationStyle]);
+
+  const handleClear = () => {
+    setInputText('');
+    setTranslatedText('');
+    setUploadedFile(null);
+    setTranslatedFileContent('');
+    setError(null);
+    stopCurrentAudio();
+  };
+  
+  const handleFileSelect = (file: File) => {
+    setUploadedFile(file);
+    setTranslatedFileContent('');
     setError(null);
   };
 
@@ -145,36 +215,52 @@ const App: React.FC = () => {
             onTargetLangChange={setTargetLang}
             onSwapLanguages={handleSwapLanguages}
             isAdvanced={isAdvanced}
-            onToggleAdvanced={setIsAdvanced}
+            onToggleAdvanced={handleToggleAdvanced}
+            mode={mode}
+            onModeChange={handleModeChange}
+            style={translationStyle}
+            onStyleChange={setTranslationStyle}
           />
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-[50vh]">
-            <TextInputArea 
-              text={inputText}
-              onTextChange={setInputText}
-              isLoading={isLoading}
-              onListen={(text) => handleListen(text, sourceLang, 'source')}
-              isFetching={isFetchingSource}
-              isPlaying={nowPlaying === 'source'}
-              onClearText={handleClearText}
-            />
-            <TextOutputArea 
-              text={translatedText}
-              isLoading={isLoading}
-              error={error}
-              onListen={(text) => handleListen(text, targetLang, 'target')}
-              isFetching={isFetchingTarget}
-              isPlaying={nowPlaying === 'target'}
-            />
-          </div>
+          {mode === 'text' ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-[50vh]">
+                <TextInputArea 
+                  text={inputText}
+                  onTextChange={setInputText}
+                  isLoading={isLoading}
+                  onListen={(text) => handleListen(text, sourceLang, 'source')}
+                  isFetching={isFetchingSource}
+                  isPlaying={nowPlaying === 'source'}
+                  onClearText={handleClear}
+                />
+                <TextOutputArea 
+                  text={translatedText}
+                  isLoading={isLoading}
+                  error={error}
+                  onListen={(text) => handleListen(text, targetLang, 'target')}
+                  isFetching={isFetchingTarget}
+                  isPlaying={nowPlaying === 'target'}
+                />
+            </div>
+           ) : (
+             <FileTranslationArea
+                uploadedFile={uploadedFile}
+                translatedFileContent={translatedFileContent}
+                isLoading={isLoading}
+                error={error}
+                onFileSelect={handleFileSelect}
+                onClearFile={handleClear}
+                targetLang={targetLang}
+             />
+           )}
 
           <div className="mt-6 flex justify-center">
             <button 
               onClick={handleTranslate}
-              disabled={isLoading || !inputText.trim()}
+              disabled={isLoading || (mode === 'text' && !inputText.trim()) || (mode === 'file' && !uploadedFile)}
               className="px-8 py-3 bg-blue-600 text-white font-bold text-lg rounded-lg shadow-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all transform hover:scale-105"
             >
-              {isLoading ? 'Translating...' : 'Translate'}
+              {isLoading ? 'Translating...' : (mode === 'file' ? 'Translate File' : 'Translate')}
             </button>
           </div>
         </div>

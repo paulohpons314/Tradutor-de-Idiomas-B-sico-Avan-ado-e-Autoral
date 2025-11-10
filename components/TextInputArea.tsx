@@ -13,18 +13,6 @@ interface TextInputAreaProps {
 
 const TextInputArea: React.FC<TextInputAreaProps> = ({ text, onTextChange, isLoading, onListen, isFetching, isPlaying, onClearText }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const fileContent = e.target?.result as string;
-        onTextChange(fileContent);
-      };
-      reader.readAsText(file);
-    }
-  };
 
   const handleListen = () => {
     // If playing, the parent component will handle the stop action.
@@ -46,7 +34,7 @@ const TextInputArea: React.FC<TextInputAreaProps> = ({ text, onTextChange, isLoa
         ref={textareaRef}
         value={text}
         onChange={(e) => onTextChange(e.target.value)}
-        placeholder="Enter text to translate or upload a file..."
+        placeholder="Enter text to translate..."
         className="w-full flex-grow p-4 bg-transparent text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none resize-none text-lg"
         disabled={isLoading}
       />
@@ -74,10 +62,6 @@ const TextInputArea: React.FC<TextInputAreaProps> = ({ text, onTextChange, isLoa
           </div>
           <span className="text-sm text-gray-500">{text.length} characters</span>
         </div>
-        <label htmlFor="file-upload" className="cursor-pointer text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors">
-          Upload File
-          <input id="file-upload" type="file" className="hidden" onChange={handleFileChange} accept=".txt,.md,.text" disabled={isLoading}/>
-        </label>
       </div>
     </div>
   );
